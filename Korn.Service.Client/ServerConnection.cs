@@ -30,5 +30,5 @@ namespace Korn.Service
         public readonly ConnectionID ConnectionID;
 
         public Action<byte[]> Received;
-    }
+    }    
 }
