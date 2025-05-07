@@ -1,7 +1,7 @@
 ﻿using Korn.Pipes;
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Korn.Service
 {
@@ -75,6 +75,26 @@ namespace Korn.Service
             packet.CallbackID = random.Next();
             RegisterCallback(packet, handler);
             Send(packet);
+        }
+
+        static TimeSpan callbackWaitTime = TimeSpan.FromSeconds(30);
+        public void SendAndWait<TServerPacket>(ClientCallbackablePacket<TServerPacket> packet, Action<TServerPacket> handler) where TServerPacket : ServerCallbackPacket
+            => SendAndWait(packet, handler, callbackWaitTime);
+
+        public void SendAndWait<TServerPacket>(ClientCallbackablePacket<TServerPacket> packet, Action<TServerPacket> handler, TimeSpan timeOut) where TServerPacket : ServerCallbackPacket
+        {
+            packet.CallbackID = random.Next();
+
+            var cancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = cancellationTokenSource.Token;
+            RegisterCallback(packet, inPacket =>
+            {
+                handler(inPacket);
+                cancellationTokenSource.Cancel();
+            });
+            Send(packet);
+
+            cancellationToken.WaitHandle.WaitOne(timeOut);
         }
 
         public void Callback(ServerCallbackablePacket serverPacket, ClientCallbackPacket clientPacket)
@@ -151,31 +171,31 @@ namespace Korn.Service
                 }
             }
         }
-    }
 
-    public class CallbackDelegate
-    {
-        CallbackDelegate() { }
-
-        public int CallbackID { get; private set; }
-        public Delegate PacketHandler { get; private set; }
-        public DateTime CreatedAt { get; private set; } = DateTime.Now;
-
-        public void Invoke(ServerCallbackPacket packet)
+        public class CallbackDelegate
         {
-            if (PacketHandler != null)
-                PacketHandler.DynamicInvoke(packet);
-        }
+            CallbackDelegate() { }
 
-        public static CallbackDelegate Create<TServerPacket>(int callbackId, Action<TServerPacket> handler) where TServerPacket : ServerCallbackPacket
-        {
-            var callback = new CallbackDelegate()
+            public int CallbackID { get; private set; }
+            public Delegate PacketHandler { get; private set; }
+            public DateTime CreatedAt { get; private set; } = DateTime.Now;
+
+            public void Invoke(ServerCallbackPacket packet)
             {
-                CallbackID = callbackId,
-                PacketHandler = handler
-            };
+                if (PacketHandler != null)
+                    PacketHandler.DynamicInvoke(packet);
+            }
 
-            return callback;
+            public static CallbackDelegate Create<TServerPacket>(int callbackId, Action<TServerPacket> handler) where TServerPacket : ServerCallbackPacket
+            {
+                var callback = new CallbackDelegate()
+                {
+                    CallbackID = callbackId,
+                    PacketHandler = handler
+                };
+
+                return callback;
+            }
         }
     }
 }
